@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Tracking Test</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Location Tracking Test</h1>
+    <div id="status">Ready to test...</div>
+    <button id="testLocation">Test Location Tracking</button>
+    <button id="testAPI">Test API Direct</button>
+    <div id="results"></div>
+
+    <script>
+        // Test geolocation API
+        $('#testLocation').on('click', function() {
+            $('#status').html('Testing geolocation...');
+            
+            if (!navigator.geolocation) {
+                $('#status').html('❌ Geolocation not supported');
+                return;
+            }
+            
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    $('#status').html('✅ Geolocation working: ' + lat + ', ' + lng);
+                    
+                    // Test API call
+                    testAPICall(lat, lng);
+                },
+                function(error) {
+                    $('#status').html('❌ Geolocation error: ' + error.message + ' (Code: ' + error.code + ')');
+                    console.error('Geolocation error:', error);
+                }
+            );
+        });
+        
+        // Test API call directly
+        $('#testAPI').on('click', function() {
+            testAPICall(17.66206613, 75.31265182);
+        });
+        
+        function testAPICall(lat, lng) {
+            $('#results').html('Testing API call...');
+            
+            $.ajax({
+                url: 'http://localhost:8080/api/location/log',
+                method: 'POST',
+                data: {
+                    officer_id: 3,
+                    duty_id: 34,
+                    latitude: lat,
+                    longitude: lng,
+                    timestamp: new Date().toISOString()
+                },
+                success: function(response) {
+                    $('#results').html('✅ API Success: ' + JSON.stringify(response, null, 2));
+                    console.log('API Success:', response);
+                },
+                error: function(xhr, status, error) {
+                    $('#results').html('❌ API Error: ' + status + ' - ' + error + '<br>Response: ' + xhr.responseText);
+                    console.error('API Error:', xhr, status, error);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

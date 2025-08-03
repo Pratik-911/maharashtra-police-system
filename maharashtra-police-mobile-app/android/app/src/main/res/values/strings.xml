@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Maharashtra Police</string>
+    <string name="title_activity_main">Maharashtra Police</string>
+    <string name="package_name">com.maharashtra.police</string>
+    <string name="custom_url_scheme">com.maharashtra.police</string>
+</resources>

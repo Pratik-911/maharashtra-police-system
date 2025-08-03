@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maharashtra Police - Officer App</title>
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚔</text></svg>">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #1a73e8;
+            --primary-dark: #1557b0;
+            --secondary-color: #34a853;
+            --danger-color: #ea4335;
+            --warning-color: #fbbc04;
+            --surface-color: #ffffff;
+            --background-color: #f8f9fa;
+            --text-primary: #202124;
+            --text-secondary: #5f6368;
+            --border-color: #dadce0;
+            --shadow-light: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            --shadow-medium: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
+            --shadow-heavy: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+            --border-radius: 12px;
+            --border-radius-lg: 16px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--background-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container-fluid {
+            padding: 0;
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .app-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .app-logo {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+        
+        .app-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .app-brand i {
+            font-size: 1.75rem;
+            color: var(--primary-color);
+        }
+        
+        .app-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+            line-height: 1.2;
+        }
+        
+        .app-subtitle {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .main-content {
+            padding: 1rem 1.5rem;
+            padding-bottom: 100px;
+            max-width: 100%;
+            margin: 0 auto;
+        }
+        
+        @media (max-width: 480px) {
+            .main-content {
+                padding: 0.75rem 1rem;
+            }
+            
+            .app-header {
+                padding: 0.75rem 1rem;
+            }
+            
+            .card-modern .card-body {
+                padding: 1.25rem;
+            }
+        }
+
+        .card-modern {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-lg);
+            box-shadow: var(--shadow-light);
+            transition: var(--transition);
+            overflow: hidden;
+        }
+
+        .card-modern:hover {
+            box-shadow: var(--shadow-medium);
+            transform: translateY(-2px);
+        }
+
+        .card-modern .card-body {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .btn-modern {
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            font-size: 0.875rem;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-medium);
+        }
+
+        .btn-success {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: rgba(52, 168, 83, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .status-inactive {
+            background: rgba(95, 99, 104, 0.1);
+            color: var(--text-secondary);
+        }
+
+        .status-tracking {
+            background: rgba(26, 115, 232, 0.1);
+            color: var(--primary-color);
+        }
+
+        .form-control {
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 1.25rem 1rem;
+            background: var(--background-light);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 80px;
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+            line-height: 1.2;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        .alert-modern {
+            border: none;
+            border-radius: var(--border-radius);
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .alert-info {
+            background: rgba(26, 115, 232, 0.1);
+            color: var(--primary-color);
+        }
+
+        .alert-success {
+            background: rgba(52, 168, 83, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .alert-danger {
+            background: rgba(234, 67, 53, 0.1);
+            color: var(--danger-color);
+        }
+
+        .loading-spinner {
+            display: none;
+        }
+
+        .loading .loading-spinner {
+            display: inline-block;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1.25rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-title i {
+            color: var(--primary-color);
+            font-size: 1.2rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .modal-modern .modal-content {
+            border: none;
+            border-radius: var(--border-radius-lg);
+            box-shadow: var(--shadow-heavy);
+        }
+
+        .modal-modern .modal-header {
+            border-bottom: 1px solid var(--border-color);
+            padding: 1.5rem;
+        }
+
+        .modal-modern .modal-body {
+            padding: 1.5rem;
+        }
+
+        @media (max-width: 576px) {
+            .main-content {
+                padding: 1rem;
+            }
+            
+            .card-modern .card-body {
+                padding: 1rem;
+            }
+        }
+
+        /* Smooth animations */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .btn-location:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-active { background-color: #28a745; }
+        .status-inactive { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; }
+        
+        .loading-spinner {
+            display: none;
+        }
+        
+        .loading-spinner.show {
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <!-- App Header -->
+    <div class="app-header">
+        <div class="app-logo">
+            <div class="app-brand">
+                <i class="fas fa-shield-alt"></i>
+                <div>
+                    <div class="app-title">Maharashtra Police</div>
+                    <div class="app-subtitle">Officer Mobile App</div>
+                </div>
+            </div>
+            <button id="logoutBtn" class="btn btn-outline-danger btn-sm" style="display: none;">
+                <i class="fas fa-sign-out-alt me-1"></i>Logout
+            </button>
+        </div>
+    </div>
+
+        <!-- Login Screen -->
+        <div id="loginScreen" class="main-content">
+            <div class="d-flex justify-content-center align-items-center" style="min-height: 60vh;">
+                <div class="w-100" style="max-width: 400px;">
+                    <div class="card-modern fade-in">
+                        <div class="card-body text-center">
+                            <div class="mb-4">
+                                <div class="d-inline-flex align-items-center justify-content-center" 
+                                     style="width: 80px; height: 80px; background: rgba(26, 115, 232, 0.1); border-radius: 50%; margin-bottom: 1.5rem;">
+                                    <i class="fas fa-shield-alt" style="font-size: 2rem; color: var(--primary-color);"></i>
+                                </div>
+                                <h4 class="mb-2">Officer Login</h4>
+                                <p class="text-muted mb-0">अधिकारी लॉगिन</p>
+                            </div>
+                            
+                            <form id="loginForm">
+                                <div class="mb-3 text-start">
+                                    <label for="badgeNumber" class="form-label">Badge Number</label>
+                                    <input type="text" class="form-control" id="badgeNumber" placeholder="Enter your badge number" required>
+                                </div>
+                                <div class="mb-4 text-start">
+                                    <label for="password" class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="password" placeholder="Enter your password" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-modern w-100">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                    Login
+                                    <div class="spinner-border spinner-border-sm loading-spinner" role="status"></div>
+                                </button>
+                            </form>
+                            
+                            <div id="loginError" class="alert-modern alert-danger mt-3" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Screen -->
+        <div id="dashboardScreen" class="main-content" style="display: none;">
+            <!-- Pull to Refresh Indicator -->
+            <div id="pullToRefreshIndicator" class="text-center py-2" style="display: none; color: var(--primary-color);">
+                <i class="fas fa-sync-alt fa-spin me-2"></i>
+                डेटा रिफ्रेश करत आहे...
+            </div>
+            
+            <!-- Officer Welcome Section -->
+            <div class="mb-4">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="mb-1">नमस्कार, <span id="officerName">Officer</span></h5>
+                        <p class="text-muted mb-0">आजची ड्यूटी स्थिती</p>
+                    </div>
+                    <div class="status-badge status-active" id="dutyStatusBadge">
+                        <i class="fas fa-circle"></i>
+                        सक्रिय
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Duty Card -->
+            <div class="card-modern mb-4 fade-in">
+                <div class="card-body">
+                    <div class="section-title">
+                        <i class="fas fa-clock"></i>
+                        सक्रिय ड्यूटी
+                    </div>
+                    
+                    <div id="dutyInfo">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" id="dutyLocation">Loading...</div>
+                                <div class="stat-label">स्थान</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="dutyTime">Loading...</div>
+                                <div class="stat-label">वेळ</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="noDuty" class="empty-state" style="display: none;">
+                        <i class="fas fa-calendar-times"></i>
+                        <h6>सध्या कोणतीही सक्रिय ड्यूटी नाही</h6>
+                        <p class="mb-0">नवीन ड्यूटी मिळाल्यावर आपल्याला सूचना दिली जाईल</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Location Tracking Card -->
+            <div class="card-modern mb-4 fade-in">
+                <div class="card-body">
+                    <div class="section-title">
+                        <i class="fas fa-map-marker-alt"></i>
+                        स्थान ट्रॅकिंग
+                    </div>
+                    
+                    <!-- Location Status -->
+                    <div id="locationStatus" class="alert-modern alert-info mb-3">
+                        <div id="locationStatusText" class="d-flex align-items-center">
+                            <i class="fas fa-info-circle me-2"></i>
+                            स्थान ट्रॅकिंग तयार आहे
+                        </div>
+                    </div>
+                    
+                    <!-- Location Controls -->
+                    <div class="d-flex gap-2 justify-content-center mb-3">
+                        <button id="startTracking" class="btn btn-success btn-modern">
+                            <i class="fas fa-play"></i>
+                            ट्रॅकिंग सुरू करा
+                        </button>
+                        <button id="stopTracking" class="btn btn-danger btn-modern d-none">
+                            <i class="fas fa-stop"></i>
+                            ट्रॅकिंग थांबवा
+                        </button>
+                    </div>
+                    
+                    <!-- Radius Status Indicator -->
+                    <div id="radiusStatusContainer" class="mb-3" style="display: none;">
+                        <div class="alert-modern" id="radiusStatus">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <i id="radiusIcon" class="fas fa-map-marker-alt me-2"></i>
+                                    <span id="radiusStatusText">स्थिती तपासत आहे...</span>
+                                </div>
+                                <div class="text-end">
+                                    <small id="radiusDistance" class="text-muted"></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Location Stats -->
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="locationCount">0</div>
+                            <div class="stat-label">पाठविलेले</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="lastUpdate">Never</div>
+                            <div class="stat-label">शेवटचे अपडेट</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">
+                                <span class="status-indicator" id="connectionStatus"></span>
+                                <span id="connectionText">Checking...</span>
+                            </div>
+                            <div class="stat-label">कनेक्शन</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="validPings">0</div>
+                            <div class="stat-label">वैध पिंग</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compliance Card -->
+            <div class="card-modern mb-4 fade-in">
+                <div class="card-body">
+                    <div class="section-title">
+                        <i class="fas fa-tachometer-alt"></i>
+                        अनुपालन
+                    </div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="compliancePercent">0%</div>
+                            <div class="stat-label">एकूण अनुपालन</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="trackingTime">0 min</div>
+                            <div class="stat-label">ट्रॅकिंग वेळ</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">आजची प्रगती</span>
+                            <span class="text-muted" id="todayProgress">0%</span>
+                        </div>
+                        <div class="progress" style="height: 8px; border-radius: 4px;">
+                            <div class="progress-bar" role="progressbar" style="width: 0%; background: var(--primary-color);" id="progressBar"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Location Permission Modal -->
+    <div class="modal fade modal-modern" id="backgroundLocationModal" tabindex="-1" aria-labelledby="backgroundLocationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="backgroundLocationModalLabel">
+                        <i class="fas fa-map-marker-alt me-2"></i>बॅकग्राउंड लोकेशन परवानगी
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <div class="d-inline-flex align-items-center justify-content-center" 
+                             style="width: 60px; height: 60px; background: rgba(26, 115, 232, 0.1); border-radius: 50%;">
+                            <i class="fas fa-location-arrow" style="font-size: 1.5rem; color: var(--primary-color);"></i>
+                        </div>
+                    </div>
+                    <p class="mb-3">सतत ड्यूटी ट्रॅकिंगसाठी, कृपया खालील सेटिंग्स बदला:</p>
+                    <div class="alert-modern alert-info mb-3">
+                        <strong>Android 10+ वर:</strong><br>
+                        1. सेटिंग्स > Apps > Maharashtra Police<br>
+                        2. Permissions > Location<br>
+                        3. "नेहमी अनुमती द्या" निवडा
+                    </div>
+                    <div class="alert-modern alert-danger">
+                        <strong>महत्वाचे:</strong> "फक्त अॅप वापरताना" निवडल्यास फोन लॉक झाल्यावर ट्रॅकिंग थांबेल.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary btn-modern" data-bs-dismiss="modal">
+                        <i class="fas fa-check"></i>समजले
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/capacitor.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

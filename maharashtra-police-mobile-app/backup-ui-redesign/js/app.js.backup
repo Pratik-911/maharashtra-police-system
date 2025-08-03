@@ -1,0 +1,952 @@
+// Main Application Logic
+// Maharashtra Police Mobile App
+
+// Import Capacitor Geolocation plugin properly
+let Geolocation = null;
+
+// Initialize Geolocation plugin when available
+if (typeof window.Capacitor !== 'undefined' && window.Capacitor.Plugins) {
+    Geolocation = window.Capacitor.Plugins.Geolocation;
+} else if (typeof window.CapacitorPlugins !== 'undefined' && window.CapacitorPlugins.geolocation) {
+    Geolocation = window.CapacitorPlugins.geolocation;
+}
+
+// Helper function to get environment-specific API base URL
+function getApiBaseUrl() {
+    // Always use LAN IP for proper connectivity from both browser and native app
+    return 'http://192.168.1.4:8080';
+}
+
+// Fallback configuration in case window.AppConfig is not loaded
+if (typeof window.AppConfig === 'undefined') {
+    window.AppConfig = {
+        API_BASE_URL: getApiBaseUrl(),
+        APP_NAME: 'Maharashtra Police',
+        VERSION: '1.0.0',
+        ENDPOINTS: {
+            LOGIN: '/api/auth/mobile-login',
+            LOGOUT: '/api/auth/logout',
+            DUTIES: '/api/officer/duties',
+            LOCATION: '/api/location/log',
+            PROFILE: '/api/officer/profile'
+        }
+    };
+}
+
+class MaharashtraPoliceApp {
+    constructor() {
+        this.isAuthenticated = false;
+        this.currentOfficer = null;
+        this.activeDuty = null;
+        this.locationWatchId = null;
+        this.isTracking = false;
+        this.locationCount = 0;
+        this.lastLocationTime = null;
+        this.networkListener = null;
+        
+        this.init();
+    }
+    
+    async init() {
+        console.log('🚀 Maharashtra Police App initializing...');
+        
+        try {
+            // Initialize Capacitor plugins (only if available)
+            await this.initializeCapacitor();
+            
+            // Setup network monitoring (fallback for browser)
+            await this.setupNetworkMonitoring();
+            
+            // Check for existing session
+            await this.checkExistingSession();
+            
+            // Setup event listeners
+            this.setupEventListeners();
+            
+        } catch (error) {
+            console.error('❌ App initialization failed:', error);
+            this.showLoginScreen();
+        }
+    }
+    
+    async initializeCapacitor() {
+        // Wait for Capacitor plugins to be available (optional for browser testing)
+        let attempts = 0;
+        while (!window.CapacitorPlugins && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        if (!window.CapacitorPlugins) {
+            console.warn('⚠️ Capacitor plugins not available - using browser fallbacks');
+            // Create fallback plugins for browser testing
+            window.CapacitorPlugins = {
+                storage: {
+                    get: async (key) => ({ value: localStorage.getItem(key) }),
+                    set: async (key, value) => localStorage.setItem(key, JSON.stringify(value)),
+                    remove: async (key) => localStorage.removeItem(key)
+                },
+                network: {
+                    getStatus: async () => ({ connected: navigator.onLine }),
+                    addListener: (callback) => {
+                        window.addEventListener('online', () => callback({ connected: true }));
+                        window.addEventListener('offline', () => callback({ connected: false }));
+                    }
+                },
+                geolocation: {
+                    getCurrentPosition: async (options) => {
+                        return new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(
+                                (position) => resolve({
+                                    coords: {
+                                        latitude: position.coords.latitude,
+                                        longitude: position.coords.longitude,
+                                        accuracy: position.coords.accuracy
+                                    }
+                                }),
+                                reject,
+                                options
+                            );
+                        });
+                    }
+                }
+            };
+        }
+    }
+    
+    async getDeviceInfo() {
+        try {
+            // Try to get device info from Capacitor if available
+            if (window.CapacitorPlugins && window.CapacitorPlugins.device) {
+                return await window.CapacitorPlugins.device.getInfo();
+            } else {
+                // Browser fallback
+                return {
+                    platform: 'web',
+                    model: navigator.userAgent,
+                    operatingSystem: navigator.platform,
+                    osVersion: 'unknown',
+                    manufacturer: 'unknown',
+                    isVirtual: false
+                };
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not get device info, using fallback:', error);
+            return {
+                platform: 'web',
+                model: 'Browser',
+                operatingSystem: 'unknown',
+                osVersion: 'unknown',
+                manufacturer: 'unknown',
+                isVirtual: false
+            };
+        }
+    }
+    
+    setupEventListeners() {
+        // Login form
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleLogin();
+            });
+        }
+        
+        // Logout button
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                this.handleLogout();
+            });
+        }
+        
+        // Location tracking is now automatic - no manual button needed
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadDashboard();
+            });
+        }
+        
+        // App lifecycle events
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('📱 App went to background');
+                this.handleAppBackground();
+            } else {
+                console.log('📱 App came to foreground');
+                this.handleAppForeground();
+            }
+        });
+    }
+    
+    async setupNetworkMonitoring() {
+        try {
+            // Monitor network status
+            const networkStatus = await window.CapacitorPlugins.network.getStatus();
+            this.updateConnectionStatus(networkStatus);
+            
+            // Listen for network changes
+            this.networkListener = window.CapacitorPlugins.network.addListener((status) => {
+                this.updateConnectionStatus(status);
+            });
+        } catch (error) {
+            console.warn('⚠️ Network monitoring setup failed:', error);
+            // Set default online status
+            this.isOnline = navigator.onLine;
+        }
+    }
+    
+    updateConnectionStatus(status) {
+        const statusElement = document.getElementById('connectionStatus');
+        const textElement = document.getElementById('connectionText');
+        
+        // Only update if elements exist (they don't exist in the new UI)
+        if (statusElement && textElement) {
+            if (status.connected) {
+                statusElement.className = 'status-indicator status-active';
+                textElement.textContent = 'Online';
+            } else {
+                statusElement.className = 'status-indicator status-inactive';
+                textElement.textContent = 'Offline';
+            }
+        }
+        
+        // Update network status for internal tracking
+        this.isOnline = status.connected;
+    }
+    
+    async checkExistingSession() {
+        try {
+            let savedSession = null;
+            
+            // Try Capacitor storage first (native app)
+            if (typeof window.CapacitorPlugins !== 'undefined' && window.CapacitorPlugins.storage) {
+                const result = await window.CapacitorPlugins.storage.get('officer_session');
+                if (result && result.value) {
+                    try {
+                        savedSession = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
+                    } catch (e) {
+                        savedSession = result.value;
+                    }
+                }
+            } else {
+                // Fallback to localStorage for browser
+                const sessionData = localStorage.getItem('officer_session');
+                if (sessionData) {
+                    try {
+                        savedSession = JSON.parse(sessionData);
+                    } catch (e) {
+                        console.error('Error parsing session data:', e);
+                    }
+                }
+            }
+            
+            if (savedSession && savedSession.token) {
+                console.log('📱 Found existing session');
+                this.currentOfficer = savedSession;
+                await this.loadDashboard();
+            } else {
+                console.log('📱 No existing session found');
+                this.showLoginScreen();
+            }
+        } catch (error) {
+            console.error('Error checking session:', error);
+            this.showLoginScreen();
+        }
+    }
+    
+    async handleLogin() {
+        // Ensure AppConfig is available with environment-specific API URL
+        if (typeof window.AppConfig === 'undefined') {
+            // Detect if running in native app (Capacitor) or browser
+            const isNativeApp = typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform();
+            const apiBaseUrl = isNativeApp ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
+            
+            window.AppConfig = {
+                API_BASE_URL: apiBaseUrl,
+                APP_NAME: 'Maharashtra Police',
+                VERSION: '1.0.0',
+                ENDPOINTS: {
+                    LOGIN: '/api/auth/mobile-login',
+                    LOGOUT: '/api/auth/logout',
+                    DUTIES: '/api/officer/duties',
+                    LOCATION: '/api/location/log',
+                    PROFILE: '/api/officer/profile'
+                }
+            };
+        }
+        
+        const badgeNumber = document.getElementById('badgeNumber').value;
+        const password = document.getElementById('password').value;
+        const submitBtn = document.querySelector('#loginForm button[type="submit"]');
+        const spinner = submitBtn.querySelector('.loading-spinner');
+        const errorDiv = document.getElementById('loginError');
+        
+        // Show loading state
+        submitBtn.disabled = true;
+        spinner.classList.add('show');
+        errorDiv.style.display = 'none';
+        
+        try {
+            // Get device info with fallback for browser
+            const deviceInfo = await this.getDeviceInfo();
+            
+            const response = await fetch(`${getApiBaseUrl()}/api/auth/mobile-login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    badge_number: badgeNumber,
+                    password: password,
+                    device_info: deviceInfo
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                console.log('✅ Login successful');
+                this.currentOfficer = result.data;
+                
+                // Save session
+                // Save session with fallback for browser
+                if (typeof window.CapacitorPlugins !== 'undefined' && window.CapacitorPlugins.storage) {
+                    await window.CapacitorPlugins.storage.set('officer_session', result.data);
+                } else {
+                    localStorage.setItem('officer_session', JSON.stringify(result.data));
+                }
+                
+                // Load dashboard
+                await this.loadDashboard();
+                
+            } else {
+                throw new Error(result.message || 'Login failed');
+            }
+            
+        } catch (error) {
+            console.error('❌ Login error:', error);
+            errorDiv.textContent = error.message || 'लॉगिन अयशस्वी. कृपया पुन्हा प्रयत्न करा.';
+            errorDiv.style.display = 'block';
+        } finally {
+            submitBtn.disabled = false;
+            spinner.classList.remove('show');
+        }
+    }
+    
+    async handleLogout() {
+        try {
+            // Stop location tracking
+            await this.stopLocationTracking();
+            
+            // Clear session
+            // Clear session with fallback for browser
+            if (typeof window.CapacitorPlugins !== 'undefined' && window.CapacitorPlugins.storage) {
+                await window.CapacitorPlugins.storage.remove('officer_session');
+            } else {
+                localStorage.removeItem('officer_session');
+            }
+            
+            // Reset state
+            this.currentOfficer = null;
+            this.activeDuty = null;
+            this.isAuthenticated = false;
+            
+            // Show login screen
+            this.showLoginScreen();
+            
+            console.log('✅ Logout successful');
+            
+        } catch (error) {
+            console.error('❌ Logout error:', error);
+        }
+    }
+    
+    showLoginScreen() {
+        document.getElementById('loginScreen').style.display = 'block';
+        document.getElementById('dashboardScreen').style.display = 'none';
+        
+        // Show logout button when logged in
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.style.display = this.isAuthenticated ? 'flex' : 'none';
+        }
+        
+        // Reset authentication state
+        this.isAuthenticated = false;
+        this.currentOfficer = null;
+    }
+    
+    async loadDashboard() {
+        try {
+            // Update officer badge display
+            const officerBadgeElement = document.getElementById('officerBadge');
+            if (officerBadgeElement) {
+                officerBadgeElement.textContent = this.currentOfficer.badge_number;
+            }
+            
+            // Load active duty
+            await this.loadActiveDuty();
+            
+            // Show dashboard
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('dashboardScreen').style.display = 'block';
+            
+            // Show logout button on dashboard
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.style.display = 'block';
+            }
+            
+            this.isAuthenticated = true;
+            
+            // Auto-start location tracking for any authenticated officer
+            setTimeout(() => {
+                console.log('🚀 Auto-starting location tracking...');
+                this.startLocationTracking();
+            }, 2000); // Start after 2 seconds to allow UI to settle
+            
+            console.log('✅ Dashboard loaded');
+            
+        } catch (error) {
+            console.error('❌ Dashboard load error:', error);
+            this.showLoginScreen();
+        }
+    }
+    
+    async loadActiveDuty() {
+        try {
+            // Use the working officer duties API and filter client-side
+            const response = await fetch(
+                `${getApiBaseUrl()}/api/duties/officer/${this.currentOfficer.id}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.currentOfficer.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+            
+            const result = await response.json();
+            
+            if (result.success && result.data && result.data.length > 0) {
+                // Filter for active duty (current date and time)
+                const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                const currentTime = new Date().toTimeString().split(' ')[0]; // HH:MM:SS
+                
+                const activeDuty = result.data.find(duty => {
+                    return duty.date === currentDate && 
+                           duty.start_time <= currentTime && 
+                           duty.end_time >= currentTime;
+                });
+                
+                if (activeDuty) {
+                    this.activeDuty = activeDuty;
+                    this.updateDutyUI();
+                    
+                    // Auto-start location tracking if enabled
+                    if (this.activeDuty.location_tracking_enabled) {
+                        setTimeout(() => this.startLocationTracking(), 2000);
+                    }
+                } else {
+                    this.showNoDuty();
+                }
+            } else {
+                this.showNoDuty();
+            }
+            
+        } catch (error) {
+            console.error('Error loading active duty:', error);
+            this.showNoDuty();
+        }
+    }
+    
+    updateDutyUI() {
+        if (this.activeDuty) {
+            // Update duty information display
+            const dutyDetails = document.getElementById('dutyDetails');
+            const dutyLocation = document.getElementById('dutyLocation');
+            const dutyShift = document.getElementById('dutyShift');
+            const dutyStartTime = document.getElementById('dutyStartTime');
+            const dutyEndTime = document.getElementById('dutyEndTime');
+            const activeDutyCard = document.getElementById('activeDutyCard');
+            const noDutyCard = document.getElementById('noDutyCard');
+            
+            if (dutyDetails) dutyDetails.textContent = `${this.activeDuty.point_name} - ${new Date().toLocaleDateString('mr-IN')}`;
+            if (dutyLocation) dutyLocation.textContent = this.activeDuty.point_name || 'N/A';
+            if (dutyShift) dutyShift.textContent = this.activeDuty.shift_type || 'Day';
+            if (dutyStartTime) dutyStartTime.textContent = this.activeDuty.start_time || '--:--';
+            if (dutyEndTime) dutyEndTime.textContent = this.activeDuty.end_time || '--:--';
+            if (activeDutyCard) activeDutyCard.style.display = 'block';
+            if (noDutyCard) noDutyCard.style.display = 'none';
+        } else {
+            // Update duty information display
+            const dutyDetails = document.getElementById('dutyDetails');
+            const dutyLocation = document.getElementById('dutyLocation');
+            const dutyShift = document.getElementById('dutyShift');
+            const dutyStartTime = document.getElementById('dutyStartTime');
+            const dutyEndTime = document.getElementById('dutyEndTime');
+            const activeDutyCard = document.getElementById('activeDutyCard');
+            const noDutyCard = document.getElementById('noDutyCard');
+            
+            if (activeDutyCard) activeDutyCard.style.display = 'none';
+            if (noDutyCard) noDutyCard.style.display = 'block';
+        }
+    }
+    
+    showNoDuty() {
+        // Update duty information display
+        const dutyDetails = document.getElementById('dutyDetails');
+        const dutyLocation = document.getElementById('dutyLocation');
+        const dutyShift = document.getElementById('dutyShift');
+        const dutyStartTime = document.getElementById('dutyStartTime');
+        const dutyEndTime = document.getElementById('dutyEndTime');
+        const activeDutyCard = document.getElementById('activeDutyCard');
+        const noDutyCard = document.getElementById('noDutyCard');
+        
+        if (activeDutyCard) activeDutyCard.style.display = 'none';
+        if (noDutyCard) noDutyCard.style.display = 'block';
+    }
+    
+    async startLocationTracking() {
+        if (!this.activeDuty) {
+            this.showLocationError('कोणतीही सक्रिय ड्यूटी नाही');
+            return;
+        }
+        
+        try {
+            console.log('📍 Starting location tracking...');
+            
+            // Initialize Geolocation plugin if not already done
+            if (!Geolocation) {
+                if (typeof window.Capacitor !== 'undefined' && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) {
+                    Geolocation = window.Capacitor.Plugins.Geolocation;
+                } else {
+                    throw new Error('Geolocation plugin not available');
+                }
+            }
+            
+            // Check if we're in a native app (Capacitor)
+            if (typeof window.Capacitor !== 'undefined' && window.Capacitor.isNativePlatform()) {
+                console.log('📱 Native app detected - requesting permissions...');
+                
+                // Request permissions first for native app
+                const permissions = await Geolocation.requestPermissions();
+                
+            if (permissions.location !== 'granted') {
+                throw new Error('स्थान परवानगी नाकारली');
+            }
+                
+            // Check if we have background location permission (Android 10+)
+            if (permissions.location === 'granted' && !permissions.coarseLocation) {
+                // Show guidance for background location permission
+                this.showBackgroundLocationGuidance();
+            }
+            
+            // Start periodic location updates
+            this.startPeriodicLocationUpdates();
+            
+            this.isTracking = true;
+            console.log('✅ Location tracking started');
+            this.updateLocationTrackingUI();
+            
+        } catch (error) {
+            console.error('❌ Start tracking error:', error);
+            console.error('Location tracking failed:', error.message);
+            
+            // Update UI to show error state
+            this.updateLocationTrackingUI();
+        }
+    }
+    
+    async stopLocationTracking() {
+        try {
+            console.log('🛑 Stopping location tracking...');
+            
+            if (this.locationWatchId) {
+                clearInterval(this.locationWatchId);
+                this.locationWatchId = null;
+            }
+            
+            // Location tracking stopped
+            
+            this.isTracking = false;
+            console.log('✅ Location tracking stopped');
+            this.updateLocationTrackingUI();
+            
+        } catch (error) {
+            console.error('❌ Stop tracking error:', error);
+        }
+    }
+    
+    startPeriodicLocationUpdates() {
+        // Clear any existing interval
+        if (this.locationWatchId) {
+            clearInterval(this.locationWatchId);
+        }
+        
+        // Start periodic location updates every 30 seconds
+        this.locationWatchId = setInterval(async () => {
+            try {
+                // Use Capacitor Geolocation plugin only
+                if (!Geolocation) {
+                    throw new Error('Capacitor Geolocation plugin not available');
+                }
+                
+                const position = await Geolocation.getCurrentPosition({
+                    enableHighAccuracy: false,
+                    timeout: 30000,
+                    maximumAge: 60000
+                });
+                
+                await this.handleLocationUpdate(position);
+                
+            } catch (error) {
+                console.error('Location update error:', error);
+                this.handleLocationError(error);
+            }
+        }, 30000); // 30 seconds
+        
+        console.log('📍 Periodic location updates started (every 30 seconds)');
+    }
+    
+    showBackgroundLocationGuidance() {
+        // Show modal with background location permission guidance
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            पार्श्वभूमी स्थान परवानगी आवश्यक
+                        </h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <strong>महत्वाचे:</strong> आपल्या ड्यूटी अनुपालनाची अचूक नोंद ठेवण्यासाठी, अॅप बंद असताना देखील आम्हाला आपल्या स्थानाची आवश्यकता आहे.
+                        </div>
+                        
+                        <h6 class="fw-bold mb-3">कृपया हे चरण फॉलो करा:</h6>
+                        
+                        <ol class="list-group list-group-numbered">
+                            <li class="list-group-item d-flex align-items-start">
+                                <div class="ms-2 me-auto">
+                                    <div class="fw-bold">सेटिंग्ज उघडा</div>
+                                    अॅप्स > Maharashtra Police > परवानग्या
+                                </div>
+                            </li>
+                            <li class="list-group-item d-flex align-items-start">
+                                <div class="ms-2 me-auto">
+                                    <div class="fw-bold">स्थान परवानगी निवडा</div>
+                                    "Location" वर टॅप करा
+                                </div>
+                            </li>
+                            <li class="list-group-item d-flex align-items-start">
+                                <div class="ms-2 me-auto">
+                                    <div class="fw-bold text-success">"नेहमी अनुमती द्या" निवडा</div>
+                                    "Allow all the time" पर्याय निवडा
+                                </div>
+                            </li>
+                        </ol>
+                        
+                        <div class="alert alert-warning mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>लक्षात ठेवा:</strong> "फक्त अॅप वापरताना" पर्याय निवडल्यास पार्श्वभूमी ट्रॅकिंग काम करणार नाही.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" onclick="this.openAppSettings()">सेटिंग्ज उघडा</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">नंतर</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        const bootstrapModal = new bootstrap.Modal(modal);
+        bootstrapModal.show();
+        
+        // Remove modal from DOM when closed
+        modal.addEventListener('hidden.bs.modal', () => {
+            document.body.removeChild(modal);
+        });
+    }
+    
+    openAppSettings() {
+        // Try to open app settings (Capacitor plugin)
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+            // This would require a custom plugin or native implementation
+            console.log('Opening app settings...');
+            // For now, show instructions
+            alert('कृपया मॅन्युअली सेटिंग्ज > अॅप्स > Maharashtra Police > परवानग्या > स्थान > "नेहमी अनुमती द्या" निवडा');
+        }
+    }
+    
+    async handleLocationUpdate(position) {
+        try {
+            const { latitude, longitude, accuracy } = position.coords;
+            const timestamp = new Date().toISOString();
+            
+            console.log('📍 Location update:', { latitude, longitude, accuracy, timestamp });
+            
+            // Send to server
+            await this.sendLocationToServer(latitude, longitude, timestamp);
+            
+            // Update UI
+            this.locationUpdateCount++;
+            this.lastLocationUpdate = new Date().toISOString();
+            this.updateLocationTrackingUI();
+            this.updateComplianceDisplay();
+            console.log(`✅ Location sent successfully (${this.locationUpdateCount} total)`);
+            
+            // Update status
+            this.updateLocationStatus(
+                `स्थान अपडेट केले (${accuracy.toFixed(0)}m accuracy)`,
+                'success'
+            );
+            
+        } catch (error) {
+            console.error('❌ Handle location update error:', error);
+            this.showLocationError('स्थान अपडेट अयशस्वी');
+        }
+    }
+    
+    async sendLocationToServer(latitude, longitude, timestamp) {
+        try {
+            const response = await fetch(
+                `${getApiBaseUrl()}/api/location/log`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.currentOfficer.token}`,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        officer_id: this.currentOfficer.id,
+                        duty_id: this.activeDuty.duty_id,
+                        latitude: parseFloat(latitude),
+                        longitude: parseFloat(longitude),
+                        auth_token: this.currentOfficer.token
+                    })
+                }
+            );
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+                throw new Error(result.message || 'Server error');
+            }
+            
+            console.log('✅ Location sent to server successfully');
+            
+        } catch (error) {
+            console.error('❌ Send location error:', error);
+            
+            // Queue for retry if offline
+            const networkStatus = await window.CapacitorPlugins.network.getStatus();
+            if (!networkStatus.connected) {
+                await this.queueLocationForRetry(latitude, longitude, timestamp);
+            }
+            
+            throw error;
+        }
+    }
+    
+    async queueLocationForRetry(latitude, longitude, timestamp) {
+        try {
+            const queuedLocations = await window.CapacitorPlugins.storage.get('queued_locations') || [];
+            queuedLocations.push({
+                officer_id: this.currentOfficer.id,
+                duty_id: this.activeDuty.id,
+                latitude: parseFloat(latitude),
+                longitude: parseFloat(longitude),
+                timestamp: timestamp,
+                queued_at: new Date().toISOString()
+            });
+            
+            await window.CapacitorPlugins.storage.set('queued_locations', queuedLocations);
+            console.log('📦 Location queued for retry');
+            
+        } catch (error) {
+            console.error('❌ Queue location error:', error);
+        }
+    }
+    
+    handleLocationError(error) {
+        console.error('❌ Location error:', error);
+        
+        let errorMessage = 'स्थान त्रुटी';
+        
+        switch (error.code) {
+            case 1: // PERMISSION_DENIED
+                errorMessage = 'स्थान परवानगी नाकारली';
+                break;
+            case 2: // POSITION_UNAVAILABLE
+                errorMessage = 'स्थान उपलब्ध नाही';
+                break;
+            case 3: // TIMEOUT
+                errorMessage = 'स्थान टाइमआउट';
+                break;
+        }
+        
+        this.showLocationError(errorMessage);
+    }
+    
+    updateLocationStatus(message, type) {
+        const statusDiv = document.getElementById('locationStatus');
+        const statusText = document.getElementById('locationStatusText');
+        
+        statusDiv.className = `location-status alert alert-${type}`;
+        statusText.innerHTML = `<i class="fas fa-${this.getStatusIcon(type)} me-2"></i>${message}`;
+    }
+    
+    getStatusIcon(type) {
+        switch (type) {
+            case 'success': return 'check-circle';
+            case 'danger': return 'exclamation-triangle';
+            case 'warning': return 'exclamation-circle';
+            default: return 'info-circle';
+        }
+    }
+    
+    showLocationError(message) {
+        this.updateLocationStatus(message, 'danger');
+    }
+    
+    updateLocationStats() {
+        document.getElementById('locationCount').textContent = this.locationCount;
+        document.getElementById('lastUpdate').textContent = 
+            this.lastLocationTime ? this.lastLocationTime.toLocaleTimeString() : 'Never';
+    }
+    
+    handleAppBackground() {
+        // App went to background - location tracking continues natively
+        console.log('📱 App backgrounded - native location tracking continues');
+    }
+    
+    handleAppForeground() {
+        // App came to foreground - sync any queued data
+        console.log('📱 App foregrounded - syncing queued data');
+        this.syncQueuedLocations();
+    }
+    
+    async syncQueuedLocations() {
+        try {
+            const queuedLocations = await window.CapacitorPlugins.storage.get('queued_locations') || [];
+            
+            if (queuedLocations.length === 0) {
+                return;
+            }
+            
+            console.log(`🔄 Syncing ${queuedLocations.length} queued locations...`);
+            
+            for (const location of queuedLocations) {
+                try {
+                    await this.sendLocationToServer(
+                        location.latitude,
+                        location.longitude,
+                        location.timestamp
+                    );
+                } catch (error) {
+                    console.error('Failed to sync location:', error);
+                }
+            }
+            
+            // Clear synced locations
+            await window.CapacitorPlugins.storage.remove('queued_locations');
+            console.log('✅ Queued locations synced');
+            
+        } catch (error) {
+            console.error('❌ Sync queued locations error:', error);
+        }
+    }
+    
+    updateComplianceDisplay() {
+        // Update compliance section with current data
+        const compliancePercentage = document.getElementById('compliancePercentage');
+        const totalLogs = document.getElementById('totalLogs');
+        const compliantLogs = document.getElementById('compliantLogs');
+        
+        if (this.activeDuty && this.activeDuty.compliance) {
+            const compliance = this.activeDuty.compliance;
+            const percentage = compliance.total_logs > 0 ? 
+                Math.round((compliance.compliant_logs / compliance.total_logs) * 100) : 0;
+            
+            if (compliancePercentage) {
+                compliancePercentage.textContent = `${percentage}%`;
+                compliancePercentage.style.color = percentage >= 80 ? 'var(--success-green)' : 
+                    percentage >= 60 ? 'var(--warning-orange)' : 'var(--danger-red)';
+            }
+            if (totalLogs) totalLogs.textContent = compliance.total_logs || 0;
+            if (compliantLogs) compliantLogs.textContent = compliance.compliant_logs || 0;
+        } else {
+            // Default values when no compliance data
+            if (compliancePercentage) {
+                compliancePercentage.textContent = '---%';
+                compliancePercentage.style.color = 'var(--gray-600)';
+            }
+            if (totalLogs) totalLogs.textContent = this.locationUpdateCount || 0;
+            if (compliantLogs) compliantLogs.textContent = '0';
+        }
+    }
+    
+    updateLocationTrackingUI() {
+        // Update location tracking UI elements
+        const locationCount = document.getElementById('locationCount');
+        const lastUpdate = document.getElementById('lastUpdate');
+        const trackingStatus = document.getElementById('trackingStatus');
+        const locationStatus = document.getElementById('locationStatus');
+        
+        if (locationCount) locationCount.textContent = this.locationUpdateCount;
+        if (lastUpdate) {
+            lastUpdate.textContent = this.lastLocationUpdate ? 
+                new Date(this.lastLocationUpdate).toLocaleTimeString('mr-IN', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                }) : '--:--';
+        }
+        if (trackingStatus) {
+            if (this.isTracking) {
+                trackingStatus.textContent = 'सक्रिय';
+                trackingStatus.style.color = 'var(--success-green)';
+            } else {
+                trackingStatus.textContent = 'प्रारंभ होत आहे...';
+                trackingStatus.style.color = 'var(--warning-orange)';
+            }
+        }
+        if (locationStatus) {
+            locationStatus.style.background = this.isTracking ? 'var(--success-green)' : 'var(--warning-orange)';
+        }
+    }
+}
+
+// Initialize app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.app = new MaharashtraPoliceApp();
+    
+    // Location tracking is now automatic - no manual controls needed
+    
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            window.app.loadDashboard();
+        });
+    }
+    
+    // Update compliance display periodically
+    setInterval(() => {
+        if (window.app.isAuthenticated && window.app.activeDuty) {
+            window.app.updateComplianceDisplay();
+        }
+    }, 10000); // Update every 10 seconds
+});
+
+console.log('🔧 Maharashtra Police App loaded');
